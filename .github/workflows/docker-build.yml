@@ -1,0 +1,42 @@
+name: Build, Test, and Push to Main
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+      branches:
+       - master
+       - master
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Build the Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t dag_evaluator_image .
+
+      # Step 3: Run the Docker container to test if it works
+      - name: Run Docker container
+        run: |
+          docker run --rm dag_evaluator_image
+          
+      # Step 4: Push to main branch if the previous steps succeed
+      - name: Push code to main
+        if: success()  # Only runs if all previous steps succeeded
+        run: |
+          git config --global user.email "ldanielfch@gmail.com"
+          git config --global user.name "TheRadDani"
+          git checkout main
+          git add .
+          git commit -m "Automated update from CI"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
