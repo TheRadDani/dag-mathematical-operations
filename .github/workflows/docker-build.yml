@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -20,21 +22,48 @@ jobs:
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: Build Docker image
+        id: build
         run: |
-          docker build -t dag_evaluator_image .
-        continue-on-error: false  # Ensure the build fails if there's an error
+          set +e  # Disable exit on error
+          docker build -t dag_evaluator_image .  # Attempt to build the Docker image
+          build_status=$?  # Capture the exit status
+          echo "Build status: $build_status"  # Echo the build status for debugging
+          set -e  # Re-enable exit on error
+          if [ $build_status -ne 0 ]; then
+            echo "Docker build failed. Proceeding to rollback."  # Log the failure
+            echo "failure" > result.txt
+          else
+            echo "Docker build succeeded."
+            echo "success" > result.txt
+          fi
+      
+      - name: Run Docker image
+        id: run
+        run: |
+          if ! docker run --rm dag_evaluator_image; then
+            echo "Docker run failed. Preparing to rollback."
+            echo "failure" > result.txt
+          else
+            echo "Docker run succeeded."
+            echo "success" > result.txt
+          fi
+      
+      
 
       - name: Push Docker image (optional)
-        if: success()  # Only run if the previous step succeeded
+        if: steps.run.outputs.result == 'success'  # Only run if the run step succeeded
         run: |
           docker tag dag_evaluator_image theraddani/dag_evaluator:latest
           docker push theraddani/dag_evaluator:latest
 
       - name: Rollback if build fails
-        if: failure()  # Only run if the build step failed
+        if: steps.run.outputs.result == 'failure'  # Only run if the run step failed
         run: |
           echo "Rolling back to the last successful commit..."
-          # You can choose to revert your code here
-          git checkout HEAD^  # This checks out the previous commit
-          git push -f origin HEAD:main  # Replace 'main' with your branch name
-
+          # Check if there are previous commits
+          if [ $(git rev-list --count HEAD) -gt 1 ]; then
+            git checkout HEAD^  # This checks out the previous commit
+            git push -f origin HEAD:main  # Replace 'main' with your branch name
+          else
+            echo "No previous commits to roll back to."
+          fi
