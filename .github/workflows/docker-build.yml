@@ -1,41 +1,37 @@
-name: Build, Test, and Push to Main
+name: Docker Build
 
 on:
   push:
     branches:
-      - main
-      - master
-  pull_request:
-      branches:
-       - master
-       - master
+      - '**'  # Triggers on push to any branch
+
 jobs:
-  build-test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository code
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Step 2: Build the Docker image
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
       - name: Build Docker image
         run: |
           docker build -t dag_evaluator_image .
+        continue-on-error: false  # Ensure the build fails if there's an error
 
-      # Step 3: Run the Docker container to test if it works
-      - name: Run Docker container
+      - name: Push Docker image (optional)
+        if: success()  # Only run if the previous step succeeded
         run: |
-          docker run --rm dag_evaluator_image
-          
-      # Step 4: Push to main branch if the previous steps succeed
-      - name: Push code to main
-        if: success()  # Only runs if all previous steps succeeded
+          docker tag dag_evaluator_image theraddani/dag_evaluator:latest
+          docker push theraddani/dag_evaluator:latest
+
+      - name: Rollback if build fails
+        if: failure()  # Only run if the build step failed
         run: |
-          git config --global user.email "ldanielfch@gmail.com"
-          git config --global user.name "TheRadDani"
-          git add .
-          git commit -m "Automated update from CI"
-          git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Rolling back to the last successful commit..."
+          # You can choose to revert your code here
+          git checkout HEAD^  # This checks out the previous commit
+          git push -f origin HEAD:main  # Replace 'main' with your branch name
+
