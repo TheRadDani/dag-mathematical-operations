@@ -11,5 +11,5 @@ COPY dag.cpp .
 COPY run.sh .
 
 RUN chmod +777 run.sh
-/
+
 CMD ["bash", "./run.sh"]
