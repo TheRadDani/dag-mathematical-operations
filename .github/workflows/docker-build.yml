@@ -34,36 +34,40 @@ jobs:
             echo "failure" > result.txt
           else
             echo "Docker build succeeded."
-            echo "success" > result.txt
+
+            if ! docker run --rm dag_evaluator_image; then
+              echo "Docker run failed. Preparing to rollback."
+              echo "failure" > result.txt
+            else
+              echo "Docker run succeeded."
+              echo "success" > result.txt
+            fi
           fi
       
-      - name: Run Docker image
-        id: run
+      - name: Determine result
+        id: result
         run: |
-          if ! docker run --rm dag_evaluator_image; then
-            echo "Docker run failed. Preparing to rollback."
-            echo "failure" > result.txt
-          else
-            echo "Docker run succeeded."
-            echo "success" > result.txt
-          fi
-      
-      
+          result=$(cat result.txt)
+          echo "result=$result" >> $GITHUB_ENV
 
       - name: Push Docker image (optional)
-        if: steps.run.outputs.result == 'success'  # Only run if the run step succeeded
+        if: env.result == 'success'  # Only run if the run step succeeded
         run: |
           docker tag dag_evaluator_image theraddani/dag_evaluator:latest
           docker push theraddani/dag_evaluator:latest
 
       - name: Rollback if build fails
-        if: steps.run.outputs.result == 'failure'  # Only run if the run step failed
+        if: steps.build.outputs.result == 'failure'  # Only run if the build step failed
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           echo "Rolling back to the last successful commit..."
           # Check if there are previous commits
           if [ $(git rev-list --count HEAD) -gt 1 ]; then
+            git config --global user.name "GitHub Actions"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
             git checkout HEAD^  # This checks out the previous commit
-            git push -f origin HEAD:main  # Replace 'main' with your branch name
+            git push -f https://${GITHUB_TOKEN}@github.com/TheRadDani/dag-mathematical-operations.git HEAD:main  # Replace 'main' with your branch name
           else
             echo "No previous commits to roll back to."
           fi
